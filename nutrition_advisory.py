@@ -1,3 +1,4 @@
+import os
 import ast
 import json
 from fractions import Fraction
@@ -7,18 +8,18 @@ from datetime import date
 
 import pandas as pd
 import streamlit as st
-import plotly.express as px
-
 
 # =============================================================================
 # CONFIG
 # =============================================================================
 
-DATA_PATH = "/Users/bentschmidt-korten/Downloads/recipes-with-nutrition.csv"
+# CSV is expected to be in the same folder as this file (and in your repo)
+DATA_PATH = os.path.join(os.path.dirname(__file__), "recipes-with-nutrition.csv")
 
 HIGH_PROTEIN_MIN = 25
 MAX_CALORIES_PER_SERVING = 800
 
+# If app.py does not calculate calories, we use this placeholder
 DAILY_CALORIES_PLACEHOLDER = 2000
 
 PROTEIN_RATIO = 0.30
@@ -340,17 +341,17 @@ def init_session_state():
     if "consumed" not in st.session_state:
         st.session_state.consumed = {"cal": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0}
     if "favourite_recipes" not in st.session_state:
-        st.session_state.favourite_recipes = set()  # indices
+        st.session_state.favourite_recipes = set()
     if "meal_log" not in st.session_state:
-        st.session_state.meal_log = []  # list of dicts
+        st.session_state.meal_log = []
     if "user_profile" not in st.session_state:
         st.session_state.user_profile = None
     if "daily_plan" not in st.session_state:
         st.session_state.daily_plan = None
     if "eaten_today" not in st.session_state:
-        st.session_state.eaten_today = set()  # recipe_name strings
+        st.session_state.eaten_today = set()
     if "rating_stage" not in st.session_state:
-        st.session_state.rating_stage = {}  # recipe_name -> stage
+        st.session_state.rating_stage = {}
 
 
 def log_meal(row: pd.Series, meal_name: str):
@@ -387,11 +388,6 @@ def show_recipe_card(
     pref_model: Optional[UserPreferenceModel] = None,
     meal_target_calories: Optional[float] = None,
 ):
-    """
-    mode:
-      - "default": normal (Suggested / Search)
-      - "favourite": Favourite recipes tab (nur Anzeigen + Entfernen)
-    """
     if row is None:
         st.write("No suitable recipe found.")
         return
@@ -425,10 +421,8 @@ def show_recipe_card(
 
         st.markdown("---")
 
-        # Button-Leiste immer gleich: Link | Button 1 | Button 2
         b0, b1, b2 = st.columns(3)
 
-        # Link (wenn vorhanden)
         with b0:
             if pd.notna(row.get("url", None)) and str(row["url"]).strip():
                 st.markdown(f"[Go to recipe]({row['url']})")
@@ -442,8 +436,6 @@ def show_recipe_card(
             return
 
         # ----------------------- Default-Mode -------------------------
-
-        # 1) Noch nicht gegessen → Eat / Skip
         if not eaten:
             with b1:
                 if st.button("I have eaten this", key=f"eat_{key_prefix}"):
@@ -458,7 +450,6 @@ def show_recipe_card(
                         and st.session_state.daily_plan is not None
                     ):
                         user_df = filter_by_preferences(df, profile["diet_pref"], profile["allergies"])
-                        # Meal-Type ableiten
                         mt = str(row.get("meal_type", "")).lower()
                         if not mt:
                             mt = meal_name.lower()
@@ -474,9 +465,6 @@ def show_recipe_card(
             st.markdown("---")
             return
 
-        # 2) Ab hier: gegessen → Rating / Favourites
-
-        # Stage 1: Liked / Didn't like
         if rating_stage == "none":
             with b1:
                 if st.button("I liked this meal", key=f"like_{key_prefix}"):
@@ -489,7 +477,6 @@ def show_recipe_card(
                         pref_model.update_with_rating(row, -1)
                     st.session_state.rating_stage[recipe_name] = "disliked"
 
-        # Stage 2: nach liked → Save / Don't save
         elif rating_stage == "liked":
             with b1:
                 if st.button("Save in favourites", key=f"fav_{key_prefix}"):
@@ -499,25 +486,34 @@ def show_recipe_card(
                 if st.button("Don't save in favourites", key=f"nofav_{key_prefix}"):
                     st.session_state.rating_stage[recipe_name] = "liked_nosave"
 
-        # andere Stages (disliked/liked_saved/liked_nosave) → keine Buttons mehr
         st.markdown("---")
 
 
 # =============================================================================
-# MAIN APP
+# MAIN APP (EMBEDDABLE INTO app.py)
 # =============================================================================
 
-def main():
-    st.set_page_config(page_title="Nutrition Advisory", layout="wide")
+def main(profile_from_app: Optional[dict] = None):
+    """
+    Render the Nutrition Advisory UI.
+
+    If profile_from_app is given (from app.py), it is used instead of
+    asking the user again for username/diet/etc.
+    """
     init_session_state()
 
-    st.title("Nutrition Advisory")
+    if profile_from_app is not None:
+        st.session_state.user_profile = profile_from_app
 
     profile = st.session_state.user_profile
 
-    # ------------------------------------------------------ ACCOUNT / PROFILE
+    st.subheader("Nutrition adviser")
+    st.caption("Smart meal suggestions based on your goals, diet and allergies.")
+    st.markdown("---")
+
+    # If still no profile (standalone use), ask for it
     if profile is None:
-        st.subheader("Create your account")
+        st.subheader("Create your nutrition profile")
 
         training_split_options = [
             "Push", "Pull", "Legs", "Upper Body", "Lower Body", "Full Body", "Cardio", "Rest"
@@ -548,16 +544,16 @@ def main():
             profile = st.session_state.user_profile
 
         if profile is None:
-            # Formular ist schon gerendert, hier einfach abbrechen
             return
 
-    # ------------------------------------------------------ MAIN UI
     st.write(f"Logged in as **{profile['username']}**")
 
     try:
         df = load_and_prepare_data(DATA_PATH)
     except Exception as e:
-        st.error(f"Error loading data: {e}")
+        st.error(f"Error loading data from '{DATA_PATH}'. Make sure "
+                 f"'recipes-with-nutrition.csv' is in the same folder as app.py.")
+        st.exception(e)
         return
 
     tab_suggested, tab_search, tab_fav, tab_log = st.tabs(
@@ -679,7 +675,9 @@ def main():
             st.write("No meals recorded yet.")
         else:
             df_log = pd.DataFrame(st.session_state.meal_log)
-            df_log = df_log[["date_str", "recipe_name", "meal_name", "calories", "protein", "carbs", "fat"]]
+            df_log = df_log[
+                ["date_str", "recipe_name", "meal_name", "calories", "protein", "carbs", "fat"]
+            ]
             df_log.columns = [
                 "Date",
                 "Meal",
@@ -693,4 +691,6 @@ def main():
 
 
 if __name__ == "__main__":
+    # Standalone usage (if you ever run `streamlit run nutrition_advisory.py`)
+    st.set_page_config(page_title="Nutrition Advisory", layout="wide")
     main()
