@@ -16,12 +16,12 @@ import workout_calendar  # teammates' calendar
 import calorie_tracker   # ML-based calorie & protein tracker
 import nutrition_advisory
 import calories_nutrition
-from nutrition_advisory import main as nutrition_main, load_and_prepare_data, DATA_URL
+from nutrition_advisory import main as nutrition_main, load_and_prepare_data, DATA_FILES
 
 # DataFrame nur einmal beim App-Start laden
 if "recipes_df" not in st.session_state:
     with st.spinner("Loading recipe data..."):
-        st.session_state.recipes_df = load_and_prepare_data(DATA_URL)
+        st.session_state.recipes_df = load_and_prepare_data(DATA_FILES)
 
 
 # ---------- basic page setup ----------
@@ -429,270 +429,6 @@ def update_profile(
 
 
 # =========================================================
-# AUTHENTICATION UI (LOGIN / REGISTER / RESET)
-# =========================================================
-
-def show_login_page():
-    """Login screen styled with centered card."""
-    col_left, col_center, col_right = st.columns([1, 2, 1])
-
-    with col_center:
-        st.title("Login")
-        st.caption("Log in to your UniFit Coach dashboard.")
-
-        with st.container(border=True):
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-
-            if st.button("Login", use_container_width=True):
-                if not email or not password:
-                    st.error("Please enter both email and password.")
-                else:
-                    user_id = verify_user(email, password)
-                    if user_id:
-                        st.session_state.logged_in = True
-                        st.session_state.user_id = user_id
-                        st.session_state.user_email = email
-                        st.session_state.current_page = "Profile"
-                        st.rerun()
-                    else:
-                        st.error("Invalid email or password.")
-
-        st.write("---")
-        st.write("Don't have an account yet?")
-        if st.button("Create a new account", use_container_width=True):
-            st.session_state.login_mode = "register"
-            st.rerun()
-
-        st.write("")
-        if st.button("Forgot password?", use_container_width=True):
-            st.session_state.login_mode = "reset"
-            st.rerun()
-
-
-def show_register_page():
-    """Registration screen styled with centered card and password rules."""
-    col_left, col_center, col_right = st.columns([1, 2, 1])
-
-    with col_center:
-        st.title("Register")
-        st.caption("Create an account for UniFit Coach.")
-
-        with st.container(border=True):
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-
-            st.markdown(
-                """
-                **Password must contain:**
-                - at least 8 characters  
-                - at least one lowercase letter  
-                - at least one uppercase letter  
-                - at least one digit  
-                - at least one special character (e.g. `!`, `?`, `#`, `@`)
-                """,
-                unsafe_allow_html=False,
-            )
-
-            if st.button("Register", use_container_width=True):
-                if not email or not password:
-                    st.error("Please enter both email and password.")
-                elif not is_valid_email(email):
-                    st.error("Please enter a valid email address.")
-                else:
-                    ok_pw, msg_pw = validate_password_strength(password)
-                    if not ok_pw:
-                        st.error(msg_pw)
-                    else:
-                        ok, msg, user_id = register_user(email, password)
-                        if ok:
-                            st.session_state.logged_in = True
-                            st.session_state.user_id = user_id
-                            st.session_state.user_email = email
-                            st.session_state.current_page = "Profile"
-                            st.success("Account created! Let's set up your profile.")
-                            st.rerun()
-                        else:
-                            st.error(msg)
-
-        st.write("---")
-        if st.button("Back to login", use_container_width=True):
-            st.session_state.login_mode = "login"
-            st.rerun()
-
-
-def show_reset_password_page():
-    """Simple password reset: enter email + new password (demo, no email verification)."""
-    col_left, col_center, col_right = st.columns([1, 2, 1])
-
-    with col_center:
-        st.title("Reset password")
-        st.caption(
-            "For demo purposes, you can reset your password by entering your email "
-            "and a new password."
-        )
-
-        with st.container(border=True):
-            email = st.text_input("Email")
-            new_pw = st.text_input("New password", type="password")
-            confirm_pw = st.text_input("Confirm new password", type="password")
-
-            if st.button("Reset password", use_container_width=True):
-                if not email or not new_pw or not confirm_pw:
-                    st.error("Please fill out all fields.")
-                elif new_pw != confirm_pw:
-                    st.error("Passwords do not match.")
-                elif not is_valid_email(email):
-                    st.error("Please enter a valid email address.")
-                else:
-                    ok_pw, msg_pw = validate_password_strength(new_pw)
-                    if not ok_pw:
-                        st.error(msg_pw)
-                    else:
-                        ok, msg = reset_password(email, new_pw)
-                        if ok:
-                            st.success(msg)
-                            st.session_state.login_mode = "login"
-                            st.rerun()
-                        else:
-                            st.error(msg)
-
-        st.write("---")
-        if st.button("Back to login", use_container_width=True):
-            st.session_state.login_mode = "login"
-            st.rerun()
-
-
-# =========================================================
-# PUMPFESSOR JOE – SIMPLE IN-APP GUIDE
-# =========================================================
-
-def show_pumpfessor_joe(page_name: str):
-    """Small helper box with tips depending on the current page."""
-    with st.expander("👨‍🏫 Pumpfessor Joe – Need a quick guide?", expanded=False):
-        if page_name == "Profile":
-            st.write(
-                "Welcome to your **Profile**! 🧍‍♂️\n\n"
-                "- Enter your age, weight, height, preferences and allergies.\n"
-                "- Click **Save profile**.\n"
-                "- This data can be used to personalize your workouts "
-                "and nutrition advice."
-            )
-        elif page_name == "Trainer":
-            st.write(
-                "This is the **Trainer** page. 🏋️‍♂️\n\n"
-                "Use the tabs to build a workout with Pumpfessor Joe and "
-                "see your long-term training schedule."
-            )
-        elif page_name == "Calorie tracker":
-            st.write(
-                "On the **Calorie tracker** page 🔥 you can:\n"
-                "- Enter your body data and training session.\n"
-                "- Let Pumpfessor Joe estimate your daily calorie target.\n"
-                "- Log your meals and track calories & protein with donut charts."
-            )
-        elif page_name == "Nutrition adviser":
-            st.write(
-                "The **Nutrition adviser** page 🥗 will later give you suggestions on "
-                "meals or macros based on your goals and allergies."
-            )
-        elif page_name == "Progress":
-            st.write(
-                "The **Progress** page 📈 shows how you're doing over time.\n\n"
-                "Right now you see a demo chart. In the future, this can be replaced "
-                "with real workout or calorie data."
-            )
-        else:
-            st.write(
-                "Pumpfessor Joe is here to help you navigate UniFit Coach. "
-                "Use the menu on the left to switch between pages."
-            )
-
-
-# =========================================================
-# APP PAGES
-# =========================================================
-
-# =========================================================
-# PROFILE DB ACCESS (updated copy is below too)
-# =========================================================
-
-def get_profile(user_id: int):
-    """Fetch profile info for a given user_id."""
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT age, weight, height,
-               username, allergies, training_type, diet_preferences
-        FROM profiles WHERE user_id = ?
-        """,
-        (user_id,),
-    )
-    row = cur.fetchone()
-    conn.close()
-
-    if row:
-        return {
-            "age": row[0],
-            "weight": row[1],
-            "height": row[2],
-            "username": row[3],
-            "allergies": row[4],
-            "training_type": row[5],
-            "diet_preferences": row[6],
-        }
-
-    return {
-        "age": None,
-        "weight": None,
-        "height": None,
-        "username": None,
-        "allergies": None,
-        "training_type": None,
-        "diet_preferences": None,
-    }
-
-
-def update_profile(
-    user_id: int,
-    age: int,
-    weight: float,
-    height: float,
-    username: str,
-    allergies: str,
-    training_type: str,
-    diet_preferences: str,
-):
-    """Update profile values for a given user_id."""
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        UPDATE profiles
-        SET age = ?, weight = ?, height = ?,
-            username = ?, allergies = ?,
-            training_type = ?, diet_preferences = ?
-        WHERE user_id = ?
-        """,
-        (
-            age,
-            weight,
-            height,
-            username,
-            allergies,
-            training_type,
-            diet_preferences,
-            user_id,
-        ),
-    )
-    conn.commit()
-    conn.close()
-
-
-# =========================================================
 # PROFILE DB ACCESS (updated with gender + goal) - KEEP this one too
 # =========================================================
 
@@ -1017,6 +753,52 @@ def show_progress_page():
 
 
 # =========================================================
+# PUMPFESSOR JOE – SIMPLE IN-APP GUIDE
+# =========================================================
+
+def show_pumpfessor_joe(page_name: str):
+    """Small helper box with tips depending on the current page."""
+    with st.expander("👨‍🏫 Pumpfessor Joe – Need a quick guide?", expanded=False):
+        if page_name == "Profile":
+            st.write(
+                "Welcome to your **Profile**! 🧍‍♂️\n\n"
+                "- Enter your age, weight, height, preferences and allergies.\n"
+                "- Click **Save profile**.\n"
+                "- This data can be used to personalize your workouts "
+                "and nutrition advice."
+            )
+        elif page_name == "Trainer":
+            st.write(
+                "This is the **Trainer** page. 🏋️‍♂️\n\n"
+                "Use the tabs to build a workout with Pumpfessor Joe and "
+                "see your long-term training schedule."
+            )
+        elif page_name == "Calorie tracker":
+            st.write(
+                "On the **Calorie tracker** page 🔥 you can:\n"
+                "- Enter your body data and training session.\n"
+                "- Let Pumpfessor Joe estimate your daily calorie target.\n"
+                "- Log your meals and track calories & protein with donut charts."
+            )
+        elif page_name == "Nutrition adviser":
+            st.write(
+                "The **Nutrition adviser** page 🥗 will later give you suggestions on "
+                "meals or macros based on your goals and allergies."
+            )
+        elif page_name == "Progress":
+            st.write(
+                "The **Progress** page 📈 shows how you're doing over time.\n\n"
+                "Right now you see a demo chart. In the future, this can be replaced "
+                "with real workout or calorie data."
+            )
+        else:
+            st.write(
+                "Pumpfessor Joe is here to help you navigate UniFit Coach. "
+                "Use the menu on the left to switch between pages."
+            )
+
+
+# =========================================================
 # MAIN APP
 # =========================================================
 
@@ -1146,7 +928,6 @@ def main():
         show_nutrition_page()
     elif page == "Progress":
         show_progress_page()
-    # <<< Hier die neue Seite einfügen >>>
     elif page == "Calories & Nutrition":
         show_calories_nutrition_page()
 
