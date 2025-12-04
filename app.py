@@ -16,12 +16,12 @@ import workout_calendar  # teammates' calendar
 import calorie_tracker   # ML-based calorie & protein tracker
 import nutrition_advisory
 import calories_nutrition
-from nutrition_advisory import main as nutrition_main, load_and_prepare_data, DATA_FILES
+from nutrition_advisory import main as nutrition_main, load_and_prepare_data, CSV_FILE
 
 # DataFrame nur einmal beim App-Start laden
 if "recipes_df" not in st.session_state:
     with st.spinner("Loading recipe data..."):
-        st.session_state.recipes_df = load_and_prepare_data(DATA_FILES)
+        st.session_state.recipes_df = load_and_prepare_data(CSV_FILE)
 
 
 # ---------- basic page setup ----------
@@ -796,6 +796,14 @@ def show_pumpfessor_joe(page_name: str):
                 "Pumpfessor Joe is here to help you navigate UniFit Coach. "
                 "Use the menu on the left to switch between pages."
             )
+
+
+# =========================================================
+# AUTH UI (Login/Register/Reset) – hier fehlen in deinem Snippet show_login_page etc.
+# (Ich lasse sie unverändert; du hattest sie oben schon definiert.)
+# =========================================================
+# --> nehme an, diese Funktionen stehen in deiner Datei vor main()
+#     und müssen nicht geändert werden.
 
 
 # =========================================================
