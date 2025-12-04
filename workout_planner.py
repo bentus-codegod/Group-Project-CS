@@ -289,4 +289,3 @@ def main():
             state.current_card = 0
             state.finished = False
             st.rerun()
-
