@@ -2,8 +2,10 @@ import ast
 import json
 from fractions import Fraction
 from collections import Counter
-from typing import List, Optional
+from typing import List
 from datetime import date
+from pathlib import Path
+
 from database import get_profile
 
 import pandas as pd
@@ -30,10 +32,13 @@ st.markdown(
 # =============================================================================
 # CONFIG
 # =============================================================================
-DATA_URL = (
-    "https://huggingface.co/datasets/datahiveai/recipes-with-nutrition"
-    "/resolve/main/recipes-with-nutrition.csv"
-)
+
+# XLSX-Dateien im Repo (gleicher Ordner wie app.py)
+DATA_FILES: List[str] = [
+    "Recipes_1.xlsx",
+    "Recipes_2.xlsx",
+    "Recipes_3.xlsx",
+]
 
 HIGH_PROTEIN_MIN = 25
 MAX_CALORIES_PER_SERVING = 800
@@ -157,8 +162,19 @@ def parse_ingredient_lines_for_display(x):
 
 
 @st.cache_data(show_spinner=True)
-def load_and_prepare_data(path_or_url: str) -> pd.DataFrame:
-    df = pd.read_csv(path_or_url)
+def load_and_prepare_data(paths: List[str]) -> pd.DataFrame:
+    """
+    Lädt mehrere XLSX-Dateien aus dem Repo, kombiniert sie zu einem DataFrame
+    und bereitet die Fitness-/Nährwertdaten auf.
+    """
+    base_dir = Path(__file__).parent
+
+    frames = []
+    for p in paths:
+        xlsx_path = base_dir / p
+        frames.append(pd.read_excel(xlsx_path))
+    df = pd.concat(frames, ignore_index=True)
+
     df["protein_g_total"] = df["total_nutrients"].apply(lambda x: get_nutrient(x, "PROCNT"))
     df["fat_g_total"] = df["total_nutrients"].apply(lambda x: get_nutrient(x, "FAT"))
     df["carbs_g_total"] = df["total_nutrients"].apply(lambda x: get_nutrient(x, "CHOCDF"))
@@ -263,7 +279,6 @@ def pick_meal(df, meal_type, target_cal, training_goal, pref_model):
     else:
         base = base.sort_values("cal_diff")
 
-    # FIX: Prüfen, ob pref_model korrekt ist
     if isinstance(pref_model, UserPreferenceModel):
         base["score"] = base.apply(pref_model.score_recipe, axis=1)
         base = base.sort_values(["score", "cal_diff"], ascending=[False, True])
@@ -284,7 +299,6 @@ def recommend_daily_plan(df, daily_calories, training_goal, diet_pref, allergies
 # SESSION STATE
 # =============================================================================
 def init_session_state():
-    # FIX: pref_model immer korrekt erzwingen
     if "pref_model" not in st.session_state or not isinstance(st.session_state.pref_model, UserPreferenceModel):
         st.session_state.pref_model = UserPreferenceModel()
 
@@ -339,7 +353,6 @@ def show_recipe_card(
 
     recipe_name = row["recipe_name"]
     eaten = recipe_name in st.session_state.eaten_today
-    rating_stage = st.session_state.rating_stage.get(recipe_name, "none")
 
     with st.container():
         col_left, col_right = st.columns([1, 5])
@@ -364,42 +377,33 @@ def show_recipe_card(
 
             ingredients = row.get("ingredient_lines_per_serving", [])
 
-            # Nur die ersten drei anzeigen
             first_three = ingredients[:3]
             for line in first_three:
                 st.markdown(f"- {line}")
 
-            # Wenn mehr als 3 Zutaten existieren → Expander anzeigen
             if len(ingredients) > 3:
                 with st.expander("Show more ingredients"):
                     for line in ingredients[3:]:
                         st.markdown(f"- {line}")
 
-
             st.markdown("---")
 
-            # -------------------------- FAVOURITE MODE --------------------------
             if mode == "favourite":
                 if st.button("Remove from favourite recipes", key=f"rmfav_{key_prefix}"):
                     st.session_state.favourite_recipes.discard(row.name)
                 return
-            # -------------------------- NOT EATEN YET --------------------------
-            # -------------------------- BUTTON LAYOUT --------------------------
-            if not eaten:
 
+            if not eaten:
                 col_left, col_mid, col_right = st.columns(3)
 
-                # Links: I have eaten this
                 if col_left.button("I have eaten this", key=f"eat_{key_prefix}"):
                     log_meal(row, meal_name)
                     st.session_state.rating_stage[recipe_name] = "none"
 
-                # Mitte: I like this
                 if col_mid.button("I like this", key=f"like_{key_prefix}"):
                     st.session_state.favourite_recipes.add(row.name)
                     st.success("Added to favourites!")
 
-                # Rechts: I don't like this
                 if col_right.button("I don't like this", key=f"dislike_{key_prefix}"):
                     if df is not None and meal_target_calories is not None:
                         new_row = pick_meal(df, meal_name, meal_target_calories, "", pref_model)
@@ -407,8 +411,11 @@ def show_recipe_card(
                             st.session_state.daily_plan[meal_name] = (new_row, meal_target_calories)
 
                 return
-# MAIN APP
 
+
+# =============================================================================
+# MAIN APP
+# =============================================================================
 def main(df=None):
     init_session_state()
 
@@ -417,7 +424,7 @@ def main(df=None):
         df = st.session_state.get("recipes_df")
     if df is None:
         st.info("Loading recipe data...")
-        df = load_and_prepare_data(DATA_URL)
+        df = load_and_prepare_data(DATA_FILES)
         st.session_state.recipes_df = df
 
     profile = {
@@ -641,15 +648,12 @@ def main(df=None):
         else:
             df_combined = pd.DataFrame(combined).copy()
 
-            # ---- HIER: Werte ohne Nachkommastellen ----
             df_combined["Calories"] = df_combined["Calories"].astype(int)
             df_combined["Protein (g)"] = df_combined["Protein (g)"].astype(int)
 
-            # ---- HIER: Index bei 1 starten ----
             df_combined.index = df_combined.index + 1
 
             st.table(df_combined)
-
 
         st.markdown("### Add additional meal")
 
@@ -677,4 +681,3 @@ def main(df=None):
 
 if __name__ == "__main__":
     main()
-
