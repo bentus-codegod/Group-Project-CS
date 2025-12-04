@@ -33,12 +33,8 @@ st.markdown(
 # CONFIG
 # =============================================================================
 
-# XLSX-Dateien im Repo (gleicher Ordner wie app.py)
-DATA_FILES: List[str] = [
-    "Recipes_1.xlsx",
-    "Recipes_2.xlsx",
-    "Recipes_3.xlsx",
-]
+# 👉 CSV statt Excel!
+CSV_FILE = "recipes-with-nutrition.csv"
 
 HIGH_PROTEIN_MIN = 25
 MAX_CALORIES_PER_SERVING = 800
@@ -68,7 +64,7 @@ class UserPreferenceModel:
 
 
 # =============================================================================
-# INGREDIENT PARSING
+# INGREDIENT PARSING & HELPERS
 # =============================================================================
 UNICODE_FRACTIONS = {
     "¼": "1/4", "½": "1/2", "¾": "3/4",
@@ -126,9 +122,6 @@ def scale_ingredient_lines(lines, factor: float):
     return scaled
 
 
-# =============================================================================
-# DATA HELPERS
-# =============================================================================
 def get_nutrient(nutrient_json, key):
     try:
         data = json.loads(nutrient_json)
@@ -138,8 +131,9 @@ def get_nutrient(nutrient_json, key):
         return None
     return None
 
+
 def parse_ingredients_for_allergy(x):
-    if pd.isna(x): 
+    if pd.isna(x):
         return []
     try:
         val = ast.literal_eval(str(x))
@@ -148,6 +142,7 @@ def parse_ingredients_for_allergy(x):
     except:
         pass
     return [p.strip().lower() for p in str(x).split(",") if p.strip()]
+
 
 def parse_ingredient_lines_for_display(x):
     if pd.isna(x):
@@ -161,20 +156,17 @@ def parse_ingredient_lines_for_display(x):
     return [p.strip() for p in str(x).split(",") if p.strip()]
 
 
+# =============================================================================
+# LOAD CSV INSTEAD OF XLSX
+# =============================================================================
 @st.cache_data(show_spinner=True)
-def load_and_prepare_data(paths: List[str]) -> pd.DataFrame:
-    """
-    Lädt mehrere XLSX-Dateien aus dem Repo, kombiniert sie zu einem DataFrame
-    und bereitet die Fitness-/Nährwertdaten auf.
-    """
+def load_and_prepare_data(csv_name: str) -> pd.DataFrame:
     base_dir = Path(__file__).parent
+    csv_path = base_dir / csv_name
 
-    frames = []
-    for p in paths:
-        xlsx_path = base_dir / p
-        frames.append(pd.read_excel(xlsx_path))
-    df = pd.concat(frames, ignore_index=True)
+    df = pd.read_csv(csv_path)
 
+    # --- Nutrients ---
     df["protein_g_total"] = df["total_nutrients"].apply(lambda x: get_nutrient(x, "PROCNT"))
     df["fat_g_total"] = df["total_nutrients"].apply(lambda x: get_nutrient(x, "FAT"))
     df["carbs_g_total"] = df["total_nutrients"].apply(lambda x: get_nutrient(x, "CHOCDF"))
@@ -184,16 +176,19 @@ def load_and_prepare_data(paths: List[str]) -> pd.DataFrame:
     df["calories"] = df["calories"].astype(float)
     df["servings"] = pd.to_numeric(df["servings"], errors="coerce").fillna(1).clip(lower=1)
 
+    # per serving
     df["calories_per_serving"] = df["calories"] / df["servings"]
     df["protein_g"] = df["protein_g_total"] / df["servings"]
     df["fat_g"] = df["fat_g_total"] / df["servings"]
     df["carbs_g"] = df["carbs_g_total"] / df["servings"]
 
+    # fitness subset
     fitness_df = df[
         (df["protein_g"] >= HIGH_PROTEIN_MIN) &
         (df["calories_per_serving"] <= MAX_CALORIES_PER_SERVING)
     ].copy()
 
+    # ingredient parsing
     fitness_df["ingredients_list"] = fitness_df["ingredients"].apply(parse_ingredients_for_allergy)
     fitness_df["ingredient_lines_parsed"] = fitness_df["ingredient_lines"].apply(parse_ingredient_lines_for_display)
     fitness_df["ingredient_lines_per_serving"] = fitness_df.apply(
@@ -204,7 +199,7 @@ def load_and_prepare_data(paths: List[str]) -> pd.DataFrame:
 
 
 # =============================================================================
-# SEARCH, FILTER, PLAN
+# FILTERING, SEARCH, PLAN — unchanged
 # =============================================================================
 def filter_by_preferences(df: pd.DataFrame, diet_pref: str, allergies: List[str]) -> pd.DataFrame:
     diet_pref = diet_pref.lower()
@@ -335,7 +330,7 @@ def log_meal(row: pd.Series, meal_name: str):
 
 
 # =============================================================================
-# RECIPE CARD
+# RECIPE CARDS — unchanged
 # =============================================================================
 def show_recipe_card(
     row,
@@ -424,7 +419,7 @@ def main(df=None):
         df = st.session_state.get("recipes_df")
     if df is None:
         st.info("Loading recipe data...")
-        df = load_and_prepare_data(DATA_FILES)
+        df = load_and_prepare_data(CSV_FILE)
         st.session_state.recipes_df = df
 
     profile = {
@@ -620,7 +615,7 @@ def main(df=None):
         with c1:
             donut_chart(total_cal, target_calories, "Calories", "kcal")
         with c2:
-            donut_chart(total_prot, target_protein, "Protein", "g")
+            donut_chart(total_prot, target_protein, "Protein (g)", "g")
 
         st.markdown("### Meals eaten today")
 
